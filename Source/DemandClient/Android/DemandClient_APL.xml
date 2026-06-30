@@ -1,0 +1,228 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root xmlns:android="http://schemas.android.com/apk/res/android">
+
+  <!-- 需要的 import -->
+  <gameActivityImportAdditions>
+    <insert><![CDATA[
+import android.content.Intent;
+import android.util.Log;
+import android.app.PendingIntent;
+import java.util.List;
+    ]]></insert>
+  </gameActivityImportAdditions>
+
+  <!-- 把你的方法插入到 GameActivity 类体中 -->
+  <gameActivityClassAdditions>
+    <insert><![CDATA[
+
+public boolean LaunchAppByPackage(final String packageName) {
+    final com.epicgames.unreal.GameActivity activity = com.epicgames.unreal.GameActivity.Get();
+    try {
+        Intent intent = activity.getPackageManager().getLaunchIntentForPackage(packageName);
+        if (intent != null) {
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
+                | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+                | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            PendingIntent pendingIntent = PendingIntent.getActivity(
+                activity, 0, intent,
+                PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+            pendingIntent.send();
+            Log.debug("Launched via PendingIntent: " + packageName);
+            return true;
+        } else {
+            Log.debug("Package not found: " + packageName);
+            return false;
+        }
+    } catch (Exception e) {
+        Log.debug("LaunchAppByPackage failed: " + e.getMessage());
+        return false;
+    }
+}
+
+public boolean IsAppInForeground() {
+    try {
+        final com.epicgames.unreal.GameActivity activity = com.epicgames.unreal.GameActivity.Get();
+        if (activity == null) {
+            return false;
+        }
+
+        android.app.ActivityManager am = (android.app.ActivityManager) activity.getSystemService(android.content.Context.ACTIVITY_SERVICE);
+        if (am == null) {
+            return false;
+        }
+
+        String myPackageName = activity.getPackageName();
+        java.util.List<android.app.ActivityManager.RunningAppProcessInfo> processes = am.getRunningAppProcesses();
+        
+        if (processes != null) {
+            for (android.app.ActivityManager.RunningAppProcessInfo process : processes) {
+                if (myPackageName.equals(process.processName)) {
+                    return process.importance == android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND;
+                }
+            }
+        }
+    } catch (Exception e) {
+        Log.debug("IsAppInForeground exception: " + e.getMessage());
+    }
+    return false;
+}
+
+private android.os.PowerManager.WakeLock m_udpWakeLock = null;
+
+public void StartForegroundForUdp() {
+    final com.epicgames.unreal.GameActivity activity = com.epicgames.unreal.GameActivity.Get();
+    activity.runOnUiThread(() -> {
+        try {
+            if (m_udpWakeLock == null) {
+                android.os.PowerManager pm = (android.os.PowerManager) activity.getSystemService(android.content.Context.POWER_SERVICE);
+                if (pm != null) {
+                    m_udpWakeLock = pm.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "DemandClient:UDP");
+                }
+            }
+            if (m_udpWakeLock != null && !m_udpWakeLock.isHeld()) {
+                m_udpWakeLock.acquire(10 * 60 * 1000L);
+            }
+            Log.debug("StartForegroundForUdp ok");
+        } catch (Exception e) {
+            Log.debug("StartForegroundForUdp failed: " + e.getMessage());
+        }
+    });
+}
+
+public void StopForegroundForUdp() {
+    final com.epicgames.unreal.GameActivity activity = com.epicgames.unreal.GameActivity.Get();
+    activity.runOnUiThread(() -> {
+        try {
+            if (m_udpWakeLock != null && m_udpWakeLock.isHeld()) {
+                m_udpWakeLock.release();
+            }
+            Log.debug("StopForegroundForUdp ok");
+        } catch (Exception e) {
+            Log.debug("StopForegroundForUdp failed: " + e.getMessage());
+        }
+    });
+}
+
+public int GetDeviceBatteryLevel() {
+    try {
+        final com.epicgames.unreal.GameActivity activity = com.epicgames.unreal.GameActivity.Get();
+        if (activity == null) {
+            Log.debug("DemandClient" + "GetDeviceBatteryLevel: activity == null");
+            return -1;
+        }
+
+        android.os.BatteryManager bm =
+                (android.os.BatteryManager) activity.getSystemService(android.content.Context.BATTERY_SERVICE);
+        if (bm != null) {
+            int val = bm.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY);
+            if (val >= 0 && val <= 100) {
+                Log.debug("DemandClient" + "GetDeviceBatteryLevel (BatteryManager): " + val);
+                return val;
+            }
+        }
+
+        android.content.IntentFilter ifilter =
+                new android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED);
+        android.content.Intent batteryStatus = activity.registerReceiver(null, ifilter);
+        if (batteryStatus != null) {
+            int level = batteryStatus.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1);
+            int scale = batteryStatus.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, -1);
+            int percent = (level >= 0 && scale > 0) ? Math.round(level * 100f / (float) scale) : -1;
+            Log.debug("DemandClient" + "GetDeviceBatteryLevel (Broadcast): " + percent);
+            return percent;
+        }
+
+        Log.debug("DemandClient" + "GetDeviceBatteryLevel: battery info not available");
+        return -1;
+    } catch (Throwable t) {
+        Log.debug("DemandClient" + "GetDeviceBatteryLevel exception: " + t.getMessage());
+        return -1;
+    }
+}
+
+public void TryKillBackgroundProcesses(final String packageName) {
+    Log.debug("TryKillBackgroundProcesses called with package: " + packageName);
+    
+    try {
+        final com.epicgames.unreal.GameActivity activity = com.epicgames.unreal.GameActivity.Get();
+        if (activity == null) {
+            Log.debug("TryKillBackgroundProcesses: activity==null");
+            return;
+        }
+		
+		// check Permission
+        int killPermission = activity.checkSelfPermission(android.Manifest.permission.KILL_BACKGROUND_PROCESSES);
+        Log.debug("KILL_BACKGROUND_PROCESSES permission: " + 
+                 (killPermission == android.content.pm.PackageManager.PERMISSION_GRANTED ? "GRANTED" : "DENIED"));
+
+        android.app.ActivityManager am =
+            (android.app.ActivityManager) activity.getSystemService(android.content.Context.ACTIVITY_SERVICE);
+        if (am == null) {
+            Log.debug("TryKillBackgroundProcesses: ActivityManager == null");
+            return;
+        }
+
+        // check application is action
+        List<android.app.ActivityManager.RunningAppProcessInfo> processes = am.getRunningAppProcesses();
+        boolean found = false;
+        for (android.app.ActivityManager.RunningAppProcessInfo process : processes) {
+            if (packageName.equals(process.processName)) {
+                found = true;
+                Log.debug("Found running process: " + process.processName + ", importance: " + process.importance);
+                break;
+            }
+        }
+        
+        if (!found) {
+            Log.debug("Target process not found in running processes");
+        }
+
+        // try kill application
+        try {
+            am.killBackgroundProcesses(packageName);
+            Log.debug("killBackgroundProcesses called for: " + packageName);
+        } catch (Throwable t) {
+            Log.debug("killBackgroundProcesses failed: " + t.getMessage());
+        }
+
+        // strong kill application
+        try {
+            java.lang.reflect.Method m = am.getClass().getDeclaredMethod("forceStopPackage", String.class);
+            m.setAccessible(true);
+            m.invoke(am, packageName);
+            Log.debug("forceStopPackage invoked via reflection for: " + packageName);
+        } catch (Throwable t) {
+            Log.debug("forceStopPackage reflection failed: " + t.toString());
+        }
+
+    } catch (Throwable e) {
+        Log.debug("TryKillBackgroundProcesses Exception: " + e.getMessage());
+    }
+}
+
+    ]]></insert>
+  </gameActivityClassAdditions>
+
+  <!-- Android 11+ 让你“看见”目标包（按需修改包名） -->
+  <manifestApplicationAdditions>
+    <insert><![CDATA[
+<queries>
+    <package android:name="com.example.targetapp"/>
+    <!-- 或者 MAIN/LAUNCHER 通配 -->
+    <!--
+    <intent>
+        <action android:name="android.intent.action.MAIN"/>
+        <category android:name="android.intent.category.LAUNCHER"/>
+    </intent>
+    -->
+</queries>
+    ]]></insert>
+  </manifestApplicationAdditions>
+  
+  <!-- 在 manifest 根（顶层）增加权限 -->
+<manifestAdditions><![CDATA[
+    <uses-permission android:name="android.permission.KILL_BACKGROUND_PROCESSES" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+]]></manifestAdditions>
+
+</root>
