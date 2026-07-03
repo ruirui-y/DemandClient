@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+ï»¿// Fill out your copyright notice in the Description page of Project Settings.
 
 #pragma once
 
@@ -27,6 +27,8 @@ private:
 	void DisModifyPlayTime(RecvMsg recvMsg);
 	void DisModifyTeam(RecvMsg recvMsg);
 
+	void BringToForeground(RecvMsg recvMsg);                          // å°†è‡ªå·±æ‹‰åˆ°å‰å°
+
 	void SendMsg(uint16 MsgId, FString MsgStr, RecvMsg& recvMsg);
 
 private:
@@ -41,5 +43,5 @@ private:
 	void PrintData(TArray<uint8> Pack);
 
 private:
-	FString m_gamePackageName;                                                  // µ±Ç°Æô¶¯µÄÓÎÏ·°üÃû£¨ĞÄÌø¼ì²âÓÃ£©
+	FString m_gamePackageName;                                                  // å½“å‰å¯åŠ¨çš„æ¸¸æˆåŒ…åï¼ˆå¿ƒè·³æ£€æµ‹ç”¨ï¼‰
 };

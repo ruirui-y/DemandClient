@@ -61,6 +61,11 @@ void ULogicSystem::DisMsg(RecvMsg recvMsg)
 		UE_LOG(LogTemp, Log, TEXT("[LogicSystem] 收到修改队伍请求 ID=612"));
 		DisModifyTeam(recvMsg);
 	}
+	else if (recvMsg.ID == ReqID_VR::ID_VR_BRING_TO_FOREGROUND_REQUEST)
+	{
+        UE_LOG(LogTemp, Log, TEXT("[LogicSystem] 收到前台请求 ID=700"));
+		BringToForeground(recvMsg);
+	}
 	else
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[LogicSystem] 收到未知消息 ID=%d"), recvMsg.ID);
@@ -207,6 +212,12 @@ void ULogicSystem::DisModifyTeam(RecvMsg recvMsg)
 	FJsonSerializer::Serialize(Obj.ToSharedRef(), Writer);
 
 	SendMsg(ReqID_VR::ID_VR_MODIFY_USER_TEAM_RESPONSE, Json, recvMsg);
+}
+
+// 将自己拉到前台
+void ULogicSystem::BringToForeground(RecvMsg recvMsg)
+{
+	VRCommandTool::Instance()->BringToForeground();
 }
 
 void ULogicSystem::SendMsg(uint16 MsgId, FString MsgStr, RecvMsg& recvMsg)
